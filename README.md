@@ -1,6 +1,7 @@
 # Function Explainer
 
-### Utility for analyzing diff files and explaining the code in them.
+Utility for analyzing diff files and explaining the code in them.
+
 
 Инструмент на Go, который:
 1. Парсит `diff` файлов (например, из `git diff`).
