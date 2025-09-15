@@ -138,7 +138,7 @@ func (c *Client) ProcessAll(data []parser.ParsedFiles) files.NestedMap {
 			// Защищаем запись в общий слайс
 			mu.Lock()
 
-			if strings.Contains(res, "нет функций") {
+			if strings.Contains(strings.ToLower(res), "нет функций") {
 				mu.Unlock()
 				return
 			}
