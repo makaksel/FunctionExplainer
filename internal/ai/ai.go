@@ -117,7 +117,7 @@ func (c *Client) Ask(code string) string {
 }
 
 func (c *Client) ProcessAll(data []parser.ParsedFiles) files.NestedMap {
-	ticker := time.NewTicker(time.Minute / 45) // 45 запросов в минуту
+	ticker := time.NewTicker(time.Minute / 10) // 10 запросов в минуту
 	defer ticker.Stop()
 
 	var (

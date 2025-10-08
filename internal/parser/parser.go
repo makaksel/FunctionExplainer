@@ -1,13 +1,14 @@
 package parser
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/makaksel/FunctionExplainerGo/internal/files"
 	"github.com/waigani/diffparser"
 )
 
-var lineLimit = 400
+var lineLimit = 300
 
 func checkFileName(s string, excludedPaths []string) bool {
 	skip := false
@@ -40,11 +41,17 @@ func ParsingDiff(data []files.FileData, excludedPaths []string) []ParsedFiles {
 	var result []ParsedFiles
 	var fileChunk = make(map[string]string)
 	for _, diffFile := range data {
+
 		diff, _ := diffparser.Parse(diffFile.Data)
 
 		for _, srcFile := range diff.Files {
-			skip := checkFileName(srcFile.NewName, excludedPaths)
+			skip := checkFileName(srcFile.NewName, excludedPaths) || srcFile.Mode == 0
 			if skip {
+				continue
+			}
+
+			if srcFile.NewName == "" {
+				fmt.Printf("New file name is empty. Skip hunks!!!\n Diff FileName: %s;\n Diff Mode: %v;\n OrigName: %v\n\n", diffFile.FileName, srcFile.Mode, srcFile.OrigName)
 				continue
 			}
 
@@ -78,6 +85,7 @@ func ParsingDiff(data []files.FileData, excludedPaths []string) []ParsedFiles {
 					Data:     fileChunk[srcFile.NewName],
 				})
 			}
+
 		}
 	}
 	return result
