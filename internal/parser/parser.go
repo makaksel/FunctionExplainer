@@ -51,7 +51,7 @@ func ParsingDiff(data []files.FileData, excludedPaths []string) []ParsedFiles {
 			}
 
 			if srcFile.NewName == "" {
-				fmt.Printf("New file name is empty. Skip hunks!!!\n Diff FileName: %s;\n Diff Mode: %v;\n OrigName: %v\n\n", diffFile.FileName, srcFile.Mode, srcFile.OrigName)
+				fmt.Printf("New file name is empty. Skip hunks!!!\nDiff FileName: %s;\nDiff Mode: %v;\nDiff Header: %v;\nOrigName: %v\n\n", diffFile.FileName, srcFile.Mode, srcFile.DiffHeader, srcFile.OrigName)
 				continue
 			}
 
