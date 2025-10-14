@@ -69,7 +69,7 @@ func NewClient(token, systemPrompt, proxy string) *Client {
 	}
 }
 
-func (c *Client) Ask(code string) string {
+func (c *Client) Ask(code string) (string, error) {
 	// JSON body
 	reqBody := ChatRequest{
 		Model:       "claude-3-7-sonnet-20250219",
@@ -97,64 +97,95 @@ func (c *Client) Ask(code string) string {
 
 	resp, err := c.HttpClient.Do(req)
 	if err != nil {
-		panic(err)
+		return "", fmt.Errorf("request error: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Парсим ответ
+	// Проверка на превышение лимита
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return "", fmt.Errorf("rate_limit")
+	}
+
+	// Проверка на загруженность сервера
+	if resp.StatusCode == 529 {
+		return "", fmt.Errorf("server_limit")
+	}
+
 	body, _ := io.ReadAll(resp.Body)
 	var chatResp ChatResponse
 	if err := json.Unmarshal(body, &chatResp); err != nil {
-		panic(err)
+		return "", fmt.Errorf("json error: %w", err)
 	}
 
 	// Проверяем ошибки
 	if chatResp.Type != "message" {
-		fmt.Printf("Error type: '%s', AI response: '%s'\n", chatResp.Type, chatResp.Error.Message)
+		return "", fmt.Errorf("Error type: '%s', AI response: '%s'\n", chatResp.Type, chatResp.Error.Message)
 	}
 
-	return chatResp.Content[0].Text
+	if len(chatResp.Content) == 0 {
+		return "", fmt.Errorf("empty response")
+	}
+
+	return chatResp.Content[0].Text, nil
 }
 
 func (c *Client) ProcessAll(data []parser.ParsedFiles) files.NestedMap {
-	ticker := time.NewTicker(time.Minute / 10) // 10 запросов в минуту
+	ticker := time.NewTicker(time.Minute / 50) // 50 запросов в минуту
 	defer ticker.Stop()
 
 	var (
-		wg sync.WaitGroup
-		mu sync.Mutex
+		wg          sync.WaitGroup
+		mu          sync.Mutex
+		results     = make(files.NestedMap)
+		rateLimitMu sync.Mutex
 	)
 
-	var results = make(files.NestedMap)
-
-	for _, item := range data {
-		<-ticker.C // Ждём разрешения
+	for _, part := range data {
+		<-ticker.C // ограничение по частоте
 
 		wg.Add(1)
 		go func(part parser.ParsedFiles) {
 			defer wg.Done()
-			res := c.Ask(part.Data)
 
-			// Защищаем запись в общий слайс
-			mu.Lock()
+			for {
+				rateLimitMu.Lock() // ждем, если кто-то в паузе
+				rateLimitMu.Unlock()
 
-			if strings.Contains(strings.ToLower(res), "нет функций") {
+				res, err := c.Ask(part.Data)
+
+				if err != nil {
+					if strings.Contains(err.Error(), "rate_limit") || strings.Contains(err.Error(), "server_limit") {
+						fmt.Println("Limit. Pause for a minute...")
+
+						rateLimitMu.Lock()
+						time.Sleep(time.Minute)
+						rateLimitMu.Unlock()
+
+						continue // повторяем запрос после паузы
+					}
+					fmt.Printf("Request error %s: %v\n", part.SrcFile, err)
+					return
+				}
+
+				mu.Lock()
+				if !strings.Contains(strings.ToLower(res), "нет функций") {
+
+					re := regexp.MustCompile(`\n{2,}`)
+					formatedRes := re.ReplaceAllString(res, "\n") + "\n"
+
+					if results[part.DiffFile] == nil {
+						results[part.DiffFile] = make(map[string]string)
+					}
+
+					results[part.DiffFile][part.SrcFile] += formatedRes
+				}
 				mu.Unlock()
-				return
+
+				fmt.Printf("Process file: %s; Source: %s\n", part.DiffFile, part.SrcFile)
+				break
 			}
 
-			re := regexp.MustCompile(`\n{2,}`)
-			formatedRes := re.ReplaceAllString(res, "\n") + "\n"
-
-			if results[item.DiffFile] == nil {
-				results[item.DiffFile] = make(map[string]string)
-				results[item.DiffFile][item.SrcFile] = formatedRes
-			} else {
-				results[item.DiffFile][part.SrcFile] += formatedRes
-			}
-			mu.Unlock()
-			fmt.Printf("Process file: %s; Source: %s\n", item.DiffFile, part.SrcFile)
-		}(item)
+		}(part)
 	}
 
 	wg.Wait() // Ждём завершения всех горутин

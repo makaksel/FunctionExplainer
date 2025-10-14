@@ -8,7 +8,7 @@ import (
 	"github.com/waigani/diffparser"
 )
 
-var lineLimit = 300
+var lineLimit = 400
 
 func checkFileName(s string, excludedPaths []string) bool {
 	skip := false
